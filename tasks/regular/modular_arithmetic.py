@@ -147,7 +147,7 @@ class ModularArithmetic(task.GeneralizationTask):
     self._modulus = modulus
     if operators is None:
       operators = ('+', '*', '-')
-    self._operators = (OP_BY_CHARACTER[op] for op in operators)
+    self._operators = [OP_BY_CHARACTER[op] for op in operators]
 
   @functools.partial(jax.jit, static_argnums=(0, 2, 3))
   def sample_batch(
@@ -175,7 +175,6 @@ class ModularArithmetic(task.GeneralizationTask):
                                     (batch_size, length // 2 + 1), 0,
                                     self._modulus)
     ops = self._modulus + jnp.array(list(self._operators))
-
     operations = jrandom.choice(rng2, ops, (batch_size, length // 2))
     batch = batch.at[:, ::2].set(remainders)
     expressions = batch.at[:, 1::2].set(operations)
