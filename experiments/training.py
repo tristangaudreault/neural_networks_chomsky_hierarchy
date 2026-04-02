@@ -19,6 +19,7 @@ import dataclasses
 import functools
 import random
 from typing import Any, Callable, Mapping, Optional
+import logging
 
 import chex
 import haiku as hk
@@ -31,6 +32,8 @@ import tqdm
 from neural_networks_chomsky_hierarchy.experiments import curriculum as curriculum_lib
 from neural_networks_chomsky_hierarchy.experiments import range_evaluation
 from neural_networks_chomsky_hierarchy.tasks import task as task_lib
+
+logger = logging.getLogger("thesis.training")
 
 
 _LossMetrics = Optional[Mapping[str, jnp.ndarray]]
@@ -224,8 +227,11 @@ class TrainingWorker:
     if self._use_tqdm:
       steps = tqdm.tqdm(steps)
     for step in steps:
+      compiling = step < len(training_params.compile_lengths)
+      if step == len(training_params.compile_lengths):
+        training_params.hook.compiled()
       # Randomness handled by either python.random or numpy.
-      length = length_curriculum.sample_sequence_length(step)
+      length = length_curriculum.sample_sequence_length(step) if not compiling else training_params.compile_lengths[step]
       # Randomness handled by either jax, python.random or numpy.
       train_batch = task.sample_batch(
           next(rng_seq), length=length, batch_size=training_params.batch_size)
@@ -242,17 +248,22 @@ class TrainingWorker:
               is_autoregressive=training_params.is_autoregressive)
       self._params, self._step = params, step
 
-      log_freq = training_params.log_frequency
-      if (log_freq > 0) and (step % log_freq == 0):
-        log_data = {
-            "step": step,
-            "train_loss": float(train_loss),
-        }
-        if training_params.accuracy_fn is not None:
-          log_data["train_accuracy"] = float(train_accuracy)
-        for key, value in train_metrics.items():
-          log_data[".".join(["train_metrics", key])] = np.array(value)
-        results.append(log_data)
+      training_params.hook.train_step_after(step=step, metrics={"loss":float(train_loss), "accuracy": float(train_accuracy)})
+      # log_freq = training_params.log_frequency
+      # if (log_freq > 0) and (step % log_freq == 0):
+      #   log_data = {
+      #       "train/step": step,
+      #       "train/loss": float(train_loss),
+      #       "train/length": length,
+      #   }
+      #   if training_params.accuracy_fn is not None:
+      #     log_data["train/accuracy"] = float(train_accuracy)
+      #   for key, value in train_metrics.items():
+      #     log_data["/".join(["train/metrics", key])] = np.array(value)
+      #   results.append(log_data)
+      #   training_params.hook.train_log(log_data=log_data)
+      #   if isinstance(steps, tqdm.tqdm):
+      #       steps.set_postfix(log_data)
 
       # We need to access this private attribute since the default reserve size
       # can not be edited yet.

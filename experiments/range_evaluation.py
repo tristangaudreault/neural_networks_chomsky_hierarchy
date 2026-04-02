@@ -18,13 +18,15 @@
 import dataclasses
 import random
 from typing import Any, Callable, Mapping
+import logging
 
-from absl import logging
 import haiku as hk
 import jax
 import jax.numpy as jnp
 import numpy as np
 import tqdm
+
+logger = logging.getLogger("thesis.evaluation")
 
 
 _Batch = Mapping[str, jnp.ndarray]
@@ -72,7 +74,7 @@ def range_evaluation(
     apply_fn = jax.jit(model.apply)
 
   results = []
-  lengths = range(1, eval_params.max_test_length + 1)
+  lengths = eval_params.testing_lengths 
   if use_tqdm:
     lengths = tqdm.tqdm(lengths)
   for length in lengths:
@@ -97,9 +99,9 @@ def range_evaluation(
       sub_accuracies.append(
           float(np.mean(eval_params.accuracy_fn(outputs, batch['output']))))
     log_data = {
-        'length': length,
-        'accuracy': np.mean(sub_accuracies),
+        'test/length': length,
+        'test/accuracy': np.mean(sub_accuracies).item(),
     }
-    logging.info(log_data)
+    eval_params.hook.test_log(log_data=log_data, outputs=outputs, batch=batch, apply_fn=apply_fn, params=params)
     results.append(log_data)
   return results
