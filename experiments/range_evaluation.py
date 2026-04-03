@@ -102,6 +102,9 @@ def range_evaluation(
         'test/length': length,
         'test/accuracy': np.mean(sub_accuracies).item(),
     }
-    eval_params.hook.test_log(log_data=log_data, outputs=outputs, batch=batch, apply_fn=apply_fn, params=params)
     results.append(log_data)
+    early_stops = eval_params.hook.test_log(log_data=log_data, outputs=outputs, batch=batch, apply_fn=apply_fn, params=params)
+    if any(early_stops):
+      break
+
   return results
