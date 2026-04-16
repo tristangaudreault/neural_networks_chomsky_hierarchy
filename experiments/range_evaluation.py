@@ -81,30 +81,35 @@ def range_evaluation(
     # We need to clear the cache of jitted functions, to avoid overflow as we
     # are jitting len(lengths) ones, which can be a lot.
     apply_fn.clear_cache()
-    sub_accuracies = []
-    for _ in range(eval_params.total_batch_size // eval_params.sub_batch_size):
-      batch = eval_params.sample_batch(
-          next(rng_seq), eval_params.sub_batch_size, length)
+    try:
+      sub_accuracies = []
+      for _ in range(eval_params.total_batch_size // eval_params.sub_batch_size):
+        batch = eval_params.sample_batch(
+            next(rng_seq), eval_params.sub_batch_size, length)
 
-      if eval_params.is_autoregressive:
-        outputs = apply_fn(
-            params,
-            next(rng_seq),
-            batch['input'],
-            jnp.empty_like(batch['output']),
-            sample=True)
-      else:
-        outputs = apply_fn(params, next(rng_seq), batch['input'])
+        if eval_params.is_autoregressive:
+          outputs = apply_fn(
+              params,
+              next(rng_seq),
+              batch['input'],
+              jnp.empty_like(batch['output']),
+              sample=True)
+        else:
+          outputs = apply_fn(params, next(rng_seq), batch['input'])
+        jax.effects_barrier()
 
-      sub_accuracies.append(
-          float(np.mean(eval_params.accuracy_fn(outputs, batch['output']))))
-    log_data = {
-        'test/length': length,
-        'test/accuracy': np.mean(sub_accuracies).item(),
-    }
-    results.append(log_data)
-    early_stops = eval_params.hook.test_log(log_data=log_data, outputs=outputs, batch=batch, apply_fn=apply_fn, params=params)
-    if any(early_stops):
-      break
+        sub_accuracies.append(
+            float(np.mean(eval_params.accuracy_fn(outputs, batch['output']))))
+      log_data = {
+          'test/length': length,
+          'test/accuracy': np.mean(sub_accuracies).item(),
+      }
+      results.append(log_data)
+      early_stops = eval_params.hook.test_log(log_data=log_data, outputs=outputs, batch=batch, apply_fn=apply_fn, params=params)
+      if any(early_stops):
+        break
+    except jax.errors.JaxRuntimeError as e:
+          print(f"Caught OOM: {e}")
+          break
 
   return results
